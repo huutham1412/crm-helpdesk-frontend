@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
@@ -19,6 +19,9 @@ const sidebarOpen = ref(false)
 
 // Reactive state: Điều khiển sidebar thu nhỏ/mở rộng trên desktop
 const sidebarCollapsed = ref(false)
+
+// Reactive state: Điều khiển user dropdown
+const userDropdownOpen = ref(false)
 
 // Computed property: Danh sách menu chính (dashboard, tickets, new ticket)
 // Static data được computed để có thể filter theo role
@@ -101,22 +104,66 @@ const handleLogout = async () => {
   toast.success('Đã đăng xuất')
   router.push('/login') // Điều hướng về trang login
 }
+
+// Handler: Toggle user dropdown
+const toggleUserDropdown = () => {
+  userDropdownOpen.value = !userDropdownOpen.value
+}
+
+// Computed property: Menu items cho user dropdown
+const userDropdownItems = computed(() => [
+  {
+    label: 'Thông tin cá nhân',
+    icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+    action: () => router.push('/profile')
+  },
+  {
+    label: 'Đổi mật khẩu',
+    icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 011-1V7a1 1 0 011-1h3a1 1 0 011 1v2.586a1 1 0 001.293.707',
+    action: () => router.push('/change-password')
+  },
+  {
+    label: 'Đăng xuất',
+    icon: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1',
+    action: handleLogout,
+    danger: true
+  }
+])
+
+// Handler: Đóng dropdown khi click ra ngoài
+const handleClickOutside = (event) => {
+  const dropdown = document.getElementById('user-dropdown-container')
+  if (dropdown && !dropdown.contains(event.target)) {
+    userDropdownOpen.value = false
+  }
+}
+
+// Lifecycle hooks: Đăng ký/hủy click outside listener
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
   <div class="min-h-screen bg-slate-50">
-    <!-- Mobile sidebar backdrop -->
-    <div
-      v-if="sidebarOpen"
-      class="fixed inset-0 bg-black/50 z-40 lg:hidden"
-      @click="sidebarOpen = false"
-    ></div>
+    <!-- Mobile sidebar backdrop - chỉ hiện khi sidebar mở trên mobile, z-index thấp hơn sidebar -->
+    <Transition name="fade">
+      <div
+        v-if="sidebarOpen"
+        class="fixed inset-0 bg-black/50 z-30 lg:hidden"
+        @click="sidebarOpen = false"
+      ></div>
+    </Transition>
 
     <div class="flex">
       <!-- Sidebar -->
       <aside
         :class="[
-          'fixed lg:sticky top-0 z-50 h-screen bg-white border-r border-slate-200 flex flex-col transition-all duration-300',
+          'fixed lg:sticky top-0 z-40 h-screen bg-white border-r border-slate-200 flex flex-col transition-all duration-300',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
           sidebarCollapsed ? 'w-20' : 'w-72'
         ]"
@@ -261,7 +308,7 @@ const handleLogout = async () => {
       <!-- Main Content -->
       <div class="flex-1 flex flex-col min-h-screen">
         <!-- Top Header -->
-        <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
+        <header class="sticky top-0 z-50 bg-white border-b border-slate-200">
           <div class="flex items-center justify-between h-16 px-4 lg:px-8">
             <!-- Left -->
             <div class="flex items-center gap-4">
@@ -283,7 +330,7 @@ const handleLogout = async () => {
             </div>
 
             <!-- Right -->
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 relative">
               <!-- Notifications -->
               <button class="relative p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -292,9 +339,12 @@ const handleLogout = async () => {
                 <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"></span>
               </button>
 
-              <!-- User Dropdown -->
-              <div class="hidden sm:block">
-                <button class="flex items-center gap-3 p-1.5 pr-4 rounded-xl hover:bg-slate-100 transition-colors">
+              <!-- User Dropdown (Desktop) -->
+              <div class="hidden sm:block relative">
+                <button
+                  @click="toggleUserDropdown"
+                  class="flex items-center gap-3 p-1.5 pr-4 rounded-xl hover:bg-slate-100 transition-colors"
+                >
                   <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
                     {{ userInitials }}
                   </div>
@@ -302,10 +352,38 @@ const handleLogout = async () => {
                     <p class="text-sm font-medium text-slate-900">{{ authStore.userName }}</p>
                     <p class="text-xs text-slate-500">{{ authStore.user?.roles?.[0] || 'User' }}</p>
                   </div>
-                  <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <svg class="w-4 h-4 text-slate-400 transition-transform" :class="userDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
+
+                <!-- Dropdown Menu -->
+                <Transition
+                  enter-active-class="transition ease-out duration-200"
+                  enter-from-class="opacity-0 scale-95"
+                  enter-to-class="opacity-100 scale-100"
+                  leave-active-class="transition ease-in duration-150"
+                  leave-from-class="opacity-100 scale-100"
+                  leave-to-class="opacity-0 scale-95"
+                >
+                  <div
+                    v-if="userDropdownOpen"
+                    class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50"
+                  >
+                    <div
+                      v-for="item in userDropdownItems"
+                      :key="item.label"
+                      @click="item.action(); userDropdownOpen = false"
+                      class="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                      :class="item.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700'"
+                    >
+                      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
+                      </svg>
+                      <span class="font-medium">{{ item.label }}</span>
+                    </div>
+                  </div>
+                </Transition>
               </div>
 
               <!-- Mobile logout -->
@@ -332,3 +410,15 @@ const handleLogout = async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
