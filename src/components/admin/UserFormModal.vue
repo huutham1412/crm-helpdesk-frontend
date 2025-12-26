@@ -37,10 +37,12 @@ const title = computed(() => {
 const fetchRoles = async () => {
   fetchingRoles.value = true
   try {
-    const response = await adminService.getRolesList()
-    roles.value = response.data.data
+    // Use getRoles() instead of getRolesList() - same endpoint as RolesView
+    const response = await adminService.getRoles()
+    roles.value = response.data?.data || []
   } catch (error) {
     console.error('Error fetching roles:', error)
+    roles.value = []
   } finally {
     fetchingRoles.value = false
   }

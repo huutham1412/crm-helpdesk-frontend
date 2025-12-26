@@ -75,8 +75,10 @@ const openEditModal = (user) => {
 
 // Open role assign modal
 const openRoleModal = (user) => {
+  console.log('openRoleModal called with user:', user)
   selectedUser.value = user
   showRoleModal.value = true
+  console.log('showRoleModal set to:', showRoleModal.value)
 }
 
 // Toggle user status
@@ -163,16 +165,16 @@ onMounted(() => {
           <h1 class="text-2xl font-bold text-slate-900">Quản lý người dùng</h1>
           <p class="text-slate-500 mt-1">Quản lý tài khoản và phân quyền người dùng</p>
         </div>
-      <button
-        @click="openCreateModal"
-        class="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] transition-all"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        Thêm người dùng
-      </button>
-    </div>
+        <button
+          @click="openCreateModal"
+          class="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] transition-all"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Thêm người dùng
+        </button>
+      </div>
 
     <!-- Filters -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -350,6 +352,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </div>
 
     <!-- User Form Modal -->
     <UserFormModal
@@ -369,6 +372,5 @@ onMounted(() => {
       @close="showRoleModal = false"
       @assigned="handleRolesAssigned"
     />
-    </div>
   </DashboardLayout>
 </template>
