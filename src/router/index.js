@@ -7,8 +7,9 @@ const DashboardView = () => import('@/views/dashboard/DashboardView.vue')
 const TicketListView = () => import('@/views/tickets/TicketListView.vue')
 const TicketDetailView = () => import('@/views/tickets/TicketDetailView.vue')
 const CreateTicketView = () => import('@/views/tickets/CreateTicketView.vue')
-const UserListView = () => import('@/views/users/UserListView.vue')
 const CategoryListView = () => import('@/views/categories/CategoryListView.vue')
+const UsersView = () => import('@/views/admin/UsersView.vue')
+const RolesView = () => import('@/views/admin/RolesView.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -54,16 +55,23 @@ const router = createRouter({
       meta: { requiresAuth: true, title: 'Chi tiết Ticket' },
     },
     {
-      path: '/users',
-      name: 'users',
-      component: UserListView,
-      meta: { requiresAuth: true, requiresAdmin: true, title: 'Users', description: 'Quản lý người dùng' },
-    },
-    {
       path: '/categories',
       name: 'categories',
       component: CategoryListView,
       meta: { requiresAuth: true, requiresAdmin: true, title: 'Categories', description: 'Quản lý danh mục' },
+    },
+    // Admin routes
+    {
+      path: '/admin/users',
+      name: 'admin-users',
+      component: UsersView,
+      meta: { requiresAuth: true, requiresAdmin: true, title: 'Quản lý người dùng' },
+    },
+    {
+      path: '/admin/roles',
+      name: 'admin-roles',
+      component: RolesView,
+      meta: { requiresAuth: true, requiresAdmin: true, title: 'Quản lý vai trò' },
     },
     {
       path: '/:pathMatch(.*)*',

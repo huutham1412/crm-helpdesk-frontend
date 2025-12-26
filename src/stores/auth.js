@@ -33,6 +33,23 @@ export const useAuthStore = defineStore('auth', () => {
   // Computed property: Lấy tên user để hiển thị
   const userName = computed(() => user.value?.name || '')
 
+  // Action: Kiểm tra user có role cụ thể không
+  const hasRole = (roleName) => {
+    return user.value?.roles?.includes(roleName) || false
+  }
+
+  // Action: Kiểm tra user có bất kỳ role nào trong danh sách không
+  const hasAnyRole = (roleNames) => {
+    if (!user.value?.roles) return false
+    return roleNames.some(role => user.value.roles.includes(role))
+  }
+
+  // Action: Kiểm tra user có tất cả các roles không
+  const hasAllRoles = (roleNames) => {
+    if (!user.value?.roles) return false
+    return roleNames.every(role => user.value.roles.includes(role))
+  }
+
   // Action: Đăng nhập với credentials
   const login = async (credentials) => {
     loading.value = true
@@ -184,6 +201,9 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isCsKH,
     userName,
+    hasRole,
+    hasAnyRole,
+    hasAllRoles,
     login,
     register,
     logout,
