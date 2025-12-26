@@ -24,15 +24,10 @@ const fetchingRoles = ref(false)
 const fetchRoles = async () => {
   fetchingRoles.value = true
   try {
-    // Use getRoles() instead of getRolesList() - same endpoint as RolesView
     const response = await adminService.getRoles()
-    console.log('Roles API response:', response.data)
     const rolesData = response.data?.data || []
     roles.value = rolesData
-    console.log('Roles loaded:', rolesData.length, rolesData)
   } catch (error) {
-    console.error('Error fetching roles:', error)
-    console.error('Error response:', error.response)
     toast.error('Không thể tải danh sách vai trò: ' + (error.response?.data?.message || error.message))
     roles.value = []
   } finally {
@@ -48,7 +43,6 @@ const getUserRoles = () => {
 
 // Watch for show changes
 watch(() => props.show, (isShowing) => {
-  console.log('RoleAssignModal show changed:', isShowing)
   if (isShowing) {
     fetchRoles()
     selectedRoles.value = getUserRoles()

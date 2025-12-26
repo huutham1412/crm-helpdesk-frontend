@@ -75,10 +75,8 @@ const openEditModal = (user) => {
 
 // Open role assign modal
 const openRoleModal = (user) => {
-  console.log('openRoleModal called with user:', user)
   selectedUser.value = user
   showRoleModal.value = true
-  console.log('showRoleModal set to:', showRoleModal.value)
 }
 
 // Toggle user status

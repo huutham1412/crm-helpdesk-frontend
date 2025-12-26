@@ -25,6 +25,7 @@ const form = ref({
 })
 
 const roles = ref([])
+const selectedRoles = ref([])
 const loading = ref(false)
 const fetchingRoles = ref(false)
 
@@ -37,15 +38,25 @@ const title = computed(() => {
 const fetchRoles = async () => {
   fetchingRoles.value = true
   try {
-    // Use getRoles() instead of getRolesList() - same endpoint as RolesView
     const response = await adminService.getRoles()
+    console.log('UserFormModal getRoles response:', response)
+    console.log('response.data:', response.data)
+    console.log('response.data?.data:', response.data?.data)
     roles.value = response.data?.data || []
+    console.log('roles.value after:', roles.value)
   } catch (error) {
     console.error('Error fetching roles:', error)
+    console.error('Error response:', error.response)
     roles.value = []
   } finally {
     fetchingRoles.value = false
   }
+}
+
+// Get user's current roles
+const getUserRoles = () => {
+  if (!props.user?.roles) return []
+  return props.user.roles.map(r => typeof r === 'object' ? r.name : r)
 }
 
 // Reset form
@@ -57,6 +68,7 @@ const resetForm = () => {
     password: '',
     password_confirmation: '',
   }
+  selectedRoles.value = ['User'] // Default role
 }
 
 // Watch for user changes (edit mode)
@@ -69,18 +81,41 @@ watch(() => props.user, (newUser) => {
       password: '',
       password_confirmation: '',
     }
+    selectedRoles.value = getUserRoles()
   }
 }, { immediate: true })
 
 // Watch for show changes
 watch(() => props.show, (isShowing) => {
+  console.log('UserFormModal watch show:', isShowing, 'mode:', props.mode)
   if (isShowing) {
+    console.log('UserFormModal calling fetchRoles...')
     fetchRoles()
     if (props.mode === 'create') {
       resetForm()
     }
   }
-})
+}, { immediate: true })
+
+// Toggle role selection
+const toggleRole = (roleName) => {
+  const index = selectedRoles.value.indexOf(roleName)
+  if (index > -1) {
+    selectedRoles.value.splice(index, 1)
+  } else {
+    selectedRoles.value.push(roleName)
+  }
+}
+
+// Get role badge color
+const getRoleBadgeColor = (roleName) => {
+  const colors = {
+    Admin: 'bg-gradient-to-r from-red-500 to-pink-500 text-white',
+    CSKH: 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white',
+    User: 'bg-gradient-to-r from-slate-500 to-slate-600 text-white',
+  }
+  return colors[roleName] || 'bg-gradient-to-r from-purple-500 to-violet-500 text-white'
+}
 
 // Submit form
 const submit = async () => {
@@ -109,6 +144,10 @@ const submit = async () => {
     toast.error('Xác nhận mật khẩu không khớp')
     return
   }
+  if (selectedRoles.value.length === 0) {
+    toast.error('Vui lòng chọn ít nhất một vai trò')
+    return
+  }
 
   loading.value = true
   try {
@@ -116,6 +155,7 @@ const submit = async () => {
       name: form.value.name,
       email: form.value.email,
       phone: form.value.phone || null,
+      roles: selectedRoles.value,
     }
     if (form.value.password) {
       data.password = form.value.password
@@ -232,6 +272,44 @@ const close = () => {
                 placeholder="Nhập lại mật khẩu"
                 class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10 transition-all"
               />
+            </div>
+
+            <!-- Roles -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-3">Vai trò *</label>
+              <div v-if="fetchingRoles" class="flex items-center justify-center py-4">
+                <svg class="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <div v-else class="flex flex-wrap gap-2">
+                <div
+                  v-for="role in roles"
+                  :key="role.id"
+                  @click="toggleRole(role.name)"
+                  class="flex items-center gap-2 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all"
+                  :class="selectedRoles.includes(role.name)
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-slate-200 hover:border-slate-300'"
+                >
+                  <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors"
+                    :class="selectedRoles.includes(role.name)
+                      ? 'bg-indigo-500 border-indigo-500'
+                      : 'border-slate-300'"
+                  >
+                    <svg v-if="selectedRoles.includes(role.name)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <span
+                    class="text-sm font-medium"
+                    :class="getRoleBadgeColor(role.name)"
+                  >
+                    {{ role.name }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
