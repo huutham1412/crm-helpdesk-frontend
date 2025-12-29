@@ -6,6 +6,7 @@ import 'vue-toastification/dist/index.css'
 import router from './router'
 import './style.css'
 import App from './App.vue'
+import './echo'
 
 const app = createApp(App)
 const pinia = createPinia()

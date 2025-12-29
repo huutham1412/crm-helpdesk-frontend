@@ -1,9 +1,10 @@
 <script setup>
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTicketStore } from '@/stores/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
+import { useTicketChat } from '@/composables/useTicketChat'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 
 const route = useRoute()
@@ -30,6 +31,25 @@ const newMessage = ref('')
 // Template ref: Tham chiếu đến DOM element của container tin nhắn
 const messagesContainer = ref(null)
 
+// Realtime chat composable
+const {
+  messages: realtimeMessages,
+  loading: messagesLoading,
+  typingUsers,
+  subscribed,
+  loadMessages,
+  subscribe,
+  unsubscribe,
+  sendTyping,
+  addMessage: addRealtimeMessage
+} = useTicketChat(route.params.id)
+
+// Watch realtime messages and sync with local messages
+watch(realtimeMessages, (newMessages) => {
+  messages.value = Array.isArray(newMessages) ? newMessages : []
+  nextTick(() => scrollToBottom())
+}, { deep: true })
+
 // Computed property: Kiểm tra user có phải là staff (Admin/CSKH) không
 const isStaff = computed(() => authStore.isCsKH)
 
@@ -38,6 +58,9 @@ const canUpdate = computed(() => isStaff.value)
 
 // Computed property: Chỉ staff mới được assign ticket
 const canAssign = computed(() => isStaff.value)
+
+// Computed property: Chỉ staff mới được gửi internal message
+const canSendInternal = computed(() => isStaff.value)
 
 // Reactive state: Status dropdown hiển/ẩn
 const showStatusDropdown = ref(false)
@@ -68,17 +91,20 @@ const fetchData = async () => {
   const ticketResult = await ticketStore.fetchTicket(ticketId)
   if (ticketResult.success) {
     ticket.value = ticketStore.currentTicket
+    // Get messages from ticket data
+    if (ticket.value?.messages) {
+      messages.value = ticket.value.messages
+      // Also init realtime messages
+      realtimeMessages.value = ticket.value.messages
+    }
   } else {
     toast.error('Không thể tải thông tin ticket')
     router.push('/tickets')
     return
   }
 
-  // Fetch danh sách tin nhắn của ticket
-  const messagesResult = await ticketStore.fetchMessages(ticketId)
-  if (messagesResult.success) {
-    messages.value = ticketStore.messages
-  }
+  // Subscribe to realtime updates
+  subscribe()
 
   loading.value = false
 
@@ -96,20 +122,36 @@ const scrollToBottom = () => {
 }
 
 // Hàm gửi tin nhắn mới
-const sendMessage = async () => {
+const sendMessage = async (data = null) => {
+  const messageContent = data?.message || newMessage.value
+
   // Validate: Không gửi tin nhắn rỗng
-  if (!newMessage.value.trim()) return
+  if (!messageContent.trim()) return
 
   sendingMessage.value = true
   const ticketId = route.params.id
 
-  const result = await ticketStore.sendMessage(ticketId, {
-    message: newMessage.value,
-  })
+  const payload = {
+    message: messageContent,
+  }
+
+  // Add is_internal flag for staff
+  const isInternal = data?.is_internal || (data === null && isInternalMessage.value)
+  if (canSendInternal.value && isInternal) {
+    payload.is_internal = true
+    // Reset internal checkbox after sending
+    if (data === null) isInternalMessage.value = false
+  }
+
+  const result = await ticketStore.sendMessage(ticketId, payload)
 
   sendingMessage.value = false
 
   if (result.success) {
+    // Chỉ thêm vào realtimeMessages, watch sẽ sync sang messages
+    if (result.message) {
+      realtimeMessages.value.push(result.message)
+    }
     // Xóa nội dung input sau khi gửi thành công
     newMessage.value = ''
     // Scroll xuống để hiển thị tin nhắn mới
@@ -225,9 +267,17 @@ const formatFullDateTime = (dateString) => {
 // Reactive state: Message đang được hover để hiển thị thời gian đầy đủ
 const hoveredMessageId = ref(null)
 
+// Reactive state: Internal message option
+const isInternalMessage = ref(false)
+
 // Lifecycle hook: Fetch dữ liệu khi component được mount
 onMounted(() => {
   fetchData()
+})
+
+// Cleanup: Unsubscribe from realtime updates when component unmounts
+onUnmounted(() => {
+  unsubscribe()
 })
 </script>
 
@@ -442,7 +492,7 @@ onMounted(() => {
             <!-- Messages List -->
             <div v-else class="space-y-4">
               <div
-                v-for="message in messages"
+                v-for="message in (Array.isArray(messages) ? messages.filter(m => m && m.id) : [])"
                 :key="message.id"
                 :class="[
                   'flex gap-3 animate-message-in',
@@ -487,6 +537,13 @@ onMounted(() => {
                       </svg>
                       {{ message.user?.name }}
                     </p>
+                    <!-- Internal Message Badge -->
+                    <div v-if="message.is_internal" class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium mb-2">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      Nội bộ
+                    </div>
                     <!-- Message Content -->
                     <p class="whitespace-pre-wrap break-words leading-relaxed">{{ message.message }}</p>
                     <!-- Time -->
@@ -511,19 +568,45 @@ onMounted(() => {
                     </div>
                   </div>
                 </template>
+
+                <!-- Typing Indicator -->
+                <div v-if="typingUsers.length > 0" class="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-2xl ml-13">
+                  <div class="flex gap-1">
+                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                  </div>
+                  <span class="text-sm text-slate-500">Đang nhập...</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Message Input -->
           <div class="p-5 bg-white border-t border-slate-100">
+            <!-- Internal Message Option (CSKH only) -->
+            <div v-if="canSendInternal" class="flex items-center mb-3 px-2">
+              <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-slate-800 transition-colors">
+                <input
+                  v-model="isInternalMessage"
+                  type="checkbox"
+                  class="w-4 h-4 text-amber-500 rounded border-slate-300 focus:ring-amber-500"
+                />
+                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>Tin nhắn nội bộ <span class="text-slate-400">(chỉ CSKH thấy)</span></span>
+              </label>
+            </div>
+
             <form @submit.prevent="sendMessage" class="flex items-end gap-3">
               <div class="flex-1 relative">
                 <textarea
                   v-model="newMessage"
                   rows="1"
-                  placeholder="Nhập tin nhắn..."
+                  :placeholder="isInternalMessage ? 'Nhập tin nhắn nội bộ...' : 'Nhập tin nhắn...'"
                   class="input resize-none !rounded-2xl !py-3.5 !px-5 border-2 focus:border-primary-500"
+                  :class="isInternalMessage ? 'border-amber-300 focus:border-amber-500' : ''"
                   style="min-height: 52px; max-height: 140px;"
                   :disabled="sendingMessage"
                   @keydown.enter.exact.prevent="sendMessage"
