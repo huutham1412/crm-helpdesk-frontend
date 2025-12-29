@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import echo from '@/echo'
 import { useAuthStore } from '@/stores/auth'
 import { ticketService } from '@/api/tickets'
-import axios from 'axios'
+import api from '@/api/axios'
 
 export function useTicketChat(ticketId) {
   const authStore = useAuthStore()
@@ -61,7 +61,7 @@ export function useTicketChat(ticketId) {
   const sendTyping = async (isTyping = true) => {
     if (authStore.user) {
       try {
-        await axios.post(`/tickets/${ticketId}/typing`, {
+        await api.post(`/tickets/${ticketId}/typing`, {
           is_typing: isTyping
         })
       } catch (error) {

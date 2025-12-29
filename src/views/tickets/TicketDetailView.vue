@@ -161,6 +161,27 @@ const sendMessage = async (data = null) => {
   }
 }
 
+// Typing indicator logic
+let typingTimer = null
+const handleInput = () => {
+  // Auto-resize textarea
+  const textarea = document.querySelector('textarea[v-model]')
+  if (textarea) {
+    textarea.style.height = 'auto'
+    textarea.style.height = textarea.scrollHeight + 'px'
+  }
+
+  // Send typing indicator
+  sendTyping()
+
+  // Clear existing timer and set new one to send "stopped typing" after 2 seconds
+  if (typingTimer) clearTimeout(typingTimer)
+  typingTimer = setTimeout(() => {
+    // Send stopped typing (is_typing: false)
+    sendTyping(false)
+  }, 2000)
+}
+
 // Hàm cập nhật trạng thái ticket
 const updateStatus = async (status) => {
   const ticketId = route.params.id
@@ -568,16 +589,6 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </template>
-
-                <!-- Typing Indicator -->
-                <div v-if="typingUsers.length > 0" class="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-2xl ml-13">
-                  <div class="flex gap-1">
-                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                    <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
-                  </div>
-                  <span class="text-sm text-slate-500">Đang nhập...</span>
-                </div>
               </div>
             </div>
           </div>
@@ -601,6 +612,15 @@ onUnmounted(() => {
 
             <form @submit.prevent="sendMessage" class="flex items-end gap-3">
               <div class="flex-1 relative">
+                <!-- Typing indicator above input -->
+                <div v-if="typingUsers.length > 0" class="mb-2 flex items-center gap-2 text-sm text-slate-500">
+                  <div class="flex gap-1">
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+                  </div>
+                  <span>Đang nhập...</span>
+                </div>
                 <textarea
                   v-model="newMessage"
                   rows="1"
@@ -610,7 +630,7 @@ onUnmounted(() => {
                   style="min-height: 52px; max-height: 140px;"
                   :disabled="sendingMessage"
                   @keydown.enter.exact.prevent="sendMessage"
-                  @input="() => { $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px' }"
+                  @input="handleInput"
                 ></textarea>
                 <div class="absolute right-3 bottom-3 text-xs text-slate-400 hidden sm:block">
                   Nhấn Enter để gửi
