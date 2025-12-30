@@ -17,6 +17,8 @@ const filters = ref({
   status: '',
   priority: '',
   search: '',
+  date_from: '',
+  date_to: '',
 })
 
 // Reactive state: Theo dõi trạng thái loading khi fetch data
@@ -53,6 +55,8 @@ const clearFilters = () => {
     status: '',
     priority: '',
     search: '',
+    date_from: '',
+    date_to: '',
   }
   fetchTickets(1)
 }
@@ -203,7 +207,7 @@ onMounted(() => {
           </div>
           <h3 class="font-semibold text-slate-900">Bộ lọc</h3>
           <button
-            v-if="filters.status || filters.priority || filters.search"
+            v-if="filters.status || filters.priority || filters.search || filters.date_from || filters.date_to"
             @click="clearFilters"
             class="ml-auto text-sm text-slate-500 hover:text-primary-600 transition-colors flex items-center gap-1"
           >
@@ -261,18 +265,73 @@ onMounted(() => {
             </button>
           </div>
         </div>
+
+        <!-- Date Range Filter -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4 pt-4 border-t border-slate-100">
+          <!-- Date From -->
+          <div class="md:col-span-5">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Từ ngày</label>
+            <div class="relative">
+              <input
+                v-model="filters.date_from"
+                @change="handleFilterChange"
+                type="date"
+                class="input pr-10"
+                :disabled="loading"
+              />
+              <span v-if="loading" class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <svg class="animate-spin h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+            </div>
+          </div>
+
+          <!-- Date To -->
+          <div class="md:col-span-5">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Đến ngày</label>
+            <div class="relative">
+              <input
+                v-model="filters.date_to"
+                @change="handleFilterChange"
+                type="date"
+                class="input pr-10"
+                :disabled="loading"
+              />
+              <span v-if="loading" class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <svg class="animate-spin h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+            </div>
+          </div>
+
+          <!-- Clear Date Button -->
+          <div class="md:col-span-2 flex items-end">
+            <button
+              v-if="filters.date_from || filters.date_to"
+              @click="filters.date_from = ''; filters.date_to = ''; handleFilterChange()"
+              class="btn btn-secondary w-full"
+              :disabled="loading"
+            >
+              Xóa ngày
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Tickets List -->
-    <div class="card shadow-soft animate-slide-up" style="animation-delay: 0.1s">
-      <!-- Loading -->
-      <div v-if="loading && tickets.length === 0" class="flex flex-col items-center justify-center py-20">
+    <div class="card shadow-soft animate-slide-up relative" style="animation-delay: 0.1s">
+      <!-- Loading Overlay -->
+      <div v-if="loading" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm rounded-3xl min-h-[300px]">
         <div class="relative">
           <div class="w-16 h-16 border-4 border-slate-200 rounded-full"></div>
           <div class="absolute top-0 left-0 w-16 h-16 border-4 border-primary-600 rounded-full border-t-transparent animate-spin"></div>
         </div>
-        <p class="mt-4 text-slate-500">Đang tải danh sách tickets...</p>
+        <p class="mt-4 text-slate-500">Đang lọc danh sách tickets...</p>
       </div>
 
       <!-- Empty State -->
@@ -284,7 +343,7 @@ onMounted(() => {
         </div>
         <h3 class="text-lg font-semibold text-slate-900 mb-1">Không tìm thấy ticket nào</h3>
         <p class="text-slate-500 mb-4">
-          {{ filters.search || filters.status || filters.priority ? 'Thử thay đổi bộ lọc hoặc xóa bộ lọc' : 'Bắt đầu bằng cách tạo ticket đầu tiên của bạn' }}
+          {{ filters.search || filters.status || filters.priority || filters.date_from || filters.date_to ? 'Thử thay đổi bộ lọc hoặc xóa bộ lọc' : 'Bắt đầu bằng cách tạo ticket đầu tiên của bạn' }}
         </p>
         <router-link
           to="/tickets/create"
