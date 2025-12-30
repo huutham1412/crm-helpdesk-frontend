@@ -5,7 +5,10 @@ import { useTicketStore } from '@/stores/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
 import { useTicketChat } from '@/composables/useTicketChat'
+import { attachmentService } from '@/api/attachments'
 import DashboardLayout from '@/components/DashboardLayout.vue'
+import AttachmentUpload from '@/components/AttachmentUpload.vue'
+import ImagePreview from '@/components/ImagePreview.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,14 +132,19 @@ const scrollToBottom = () => {
 const sendMessage = async (data = null) => {
   const messageContent = data?.message || newMessage.value
 
-  // Validate: Không gửi tin nhắn rỗng
-  if (!messageContent.trim()) return
+  // Validate: Có nội dung tin nhắn hoặc có file đính kèm
+  if (!messageContent.trim() && pendingAttachments.value.length === 0) return
 
   sendingMessage.value = true
   const ticketId = route.params.id
 
   const payload = {
     message: messageContent,
+  }
+
+  // Add attachment IDs if any
+  if (pendingAttachments.value.length > 0) {
+    payload.attachment_ids = pendingAttachments.value.map(a => a.id)
   }
 
   // Add is_internal flag for staff
@@ -156,13 +164,29 @@ const sendMessage = async (data = null) => {
     if (result.message) {
       realtimeMessages.value.push(result.message)
     }
-    // Xóa nội dung input sau khi gửi thành công
+    // Xóa nội dung input và pending attachments sau khi gửi thành công
     newMessage.value = ''
+    pendingAttachments.value = []
     // Scroll xuống để hiển thị tin nhắn mới
     nextTick(() => scrollToBottom())
   } else {
     toast.error(result.error || 'Không thể gửi tin nhắn')
   }
+}
+
+// Hàm mở preview ảnh
+const openImagePreview = (attachments, initialIndex = 0) => {
+  const images = attachments.filter(a => a.is_image)
+  if (images.length === 0) return
+
+  previewImages.value = images
+  previewInitialIndex.value = initialIndex
+  showImagePreview.value = true
+}
+
+// Hàm lấy icon cho file attachment
+const getFileIcon = (attachment) => {
+  return attachmentService.getFileIcon(attachment.type)
 }
 
 // Typing indicator logic
@@ -317,6 +341,14 @@ const hoveredMessageId = ref(null)
 
 // Reactive state: Internal message option
 const isInternalMessage = ref(false)
+
+// Reactive state: Pending attachments (uploaded but not yet sent with message)
+const pendingAttachments = ref([])
+
+// Reactive state: Image preview modal
+const showImagePreview = ref(false)
+const previewImages = ref([])
+const previewInitialIndex = ref(0)
 
 // Lifecycle hook: Fetch dữ liệu khi component được mount
 onMounted(() => {
@@ -593,7 +625,65 @@ onUnmounted(() => {
                       Nội bộ
                     </div>
                     <!-- Message Content -->
-                    <p class="whitespace-pre-wrap break-words leading-relaxed">{{ message.message }}</p>
+                    <p v-if="message.message" class="whitespace-pre-wrap break-words leading-relaxed">{{ message.message }}</p>
+
+                    <!-- Attachments Display -->
+                    <div
+                      v-if="message.attachments_data && message.attachments_data.length > 0"
+                      class="mt-2 space-y-2"
+                    >
+                      <div
+                        v-for="(attachment, idx) in message.attachments_data"
+                        :key="attachment.id"
+                        class="inline-block"
+                      >
+                        <!-- Image Attachment -->
+                        <div v-if="attachment.is_image" class="inline-block mr-2 mb-2">
+                          <a
+                            href="#"
+                            @click.prevent="openImagePreview(message.attachments_data, idx)"
+                            class="inline-block"
+                          >
+                            <img
+                              :src="attachment.url"
+                              :alt="attachment.filename"
+                              class="max-w-[200px] max-h-[150px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity border-2"
+                              :class="isMyMessage(message) ? 'border-primary-400' : 'border-slate-200'"
+                            />
+                          </a>
+                          <p class="text-xs mt-1 truncate max-w-[200px]" :class="isMyMessage(message) ? 'text-primary-200' : 'text-slate-500'">
+                            {{ attachment.filename }}
+                          </p>
+                        </div>
+
+                        <!-- Non-Image Attachment -->
+                        <a
+                          v-else
+                          :href="attachment.url"
+                          download
+                          class="inline-flex items-center gap-2 px-3 py-2 mr-2 mb-2 rounded-lg transition-all"
+                          :class="isMyMessage(message)
+                            ? 'bg-primary-400/30 hover:bg-primary-400/50 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'"
+                        >
+                          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <div class="text-left">
+                            <p class="text-sm font-medium truncate max-w-[180px]" :title="attachment.filename">
+                              {{ attachment.filename }}
+                            </p>
+                            <p class="text-xs" :class="isMyMessage(message) ? 'text-primary-200' : 'text-slate-500'">
+                              {{ attachment.size }}
+                            </p>
+                          </div>
+                          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </a>
+                      </div>
+                    </div>
+
                     <!-- Time -->
                     <p
                       :class="[
@@ -635,6 +725,14 @@ onUnmounted(() => {
 
           <!-- Message Input -->
           <div class="p-5 bg-white border-t border-slate-100">
+            <!-- Pending Attachments Preview -->
+            <AttachmentUpload
+              v-if="ticket"
+              v-model="pendingAttachments"
+              :ticket-id="ticket.id"
+              :disabled="sendingMessage"
+            />
+
             <!-- Internal Message Option (CSKH only) -->
             <div v-if="canSendInternal" class="flex items-center mb-3 px-2">
               <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-slate-800 transition-colors">
@@ -678,7 +776,7 @@ onUnmounted(() => {
               </div>
               <button
                 type="submit"
-                :disabled="sendingMessage || !newMessage.trim()"
+                :disabled="sendingMessage || (!newMessage.trim() && pendingAttachments.length === 0)"
                 class="p-3.5 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-2xl hover:from-primary-700 hover:to-primary-600 transition-all shadow-lg shadow-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
               >
                 <svg v-if="!sendingMessage" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -694,6 +792,14 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Image Preview Modal -->
+    <ImagePreview
+      :images="previewImages"
+      :initial-index="previewInitialIndex"
+      :show="showImagePreview"
+      @close="showImagePreview = false"
+    />
   </DashboardLayout>
 </template>
 
