@@ -41,6 +41,7 @@ const {
   subscribe,
   unsubscribe,
   sendTyping,
+  markAsRead,
   addMessage: addRealtimeMessage
 } = useTicketChat(route.params.id)
 
@@ -105,6 +106,9 @@ const fetchData = async () => {
 
   // Subscribe to realtime updates
   subscribe()
+
+  // Mark all unread messages as read
+  markAsRead()
 
   loading.value = false
 
@@ -283,6 +287,29 @@ const formatFullDateTime = (dateString) => {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+// Hàm format thời gian đã xem
+const formatReadTime = (dateString) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 1) return 'Vừa xong'
+  if (diffMins < 60) return `Đã xem ${diffMins} phút trước`
+  const diffHours = Math.floor(diffMs / 3600000)
+  if (diffHours < 24) return `Đã xem ${diffHours} giờ trước`
+  return `Đã xem ${new Date(dateString).toLocaleDateString('vi-VN')}`
+}
+
+// Hàm kiểm tra xem có nên hiển thị read receipt không
+const shouldShowReadReceipt = (message) => {
+  // Chỉ hiển thị read receipt cho tin nhắn của mình (không phải tin nhắn hệ thống)
+  if (!message || message.message_type === 'system') return false
+  if (!isMyMessage(message)) return false
+  // Chỉ hiển thị khi đã có read_at
+  return !!message.read_at
 }
 
 // Reactive state: Message đang được hover để hiển thị thời gian đầy đủ
@@ -579,6 +606,19 @@ onUnmounted(() => {
                       </svg>
                       <span v-if="hoveredMessageId === message.id">{{ formatFullDateTime(message.created_at) }}</span>
                       <span v-else>{{ formatTimeAgo(message.created_at) }}</span>
+                    </p>
+                    <!-- Read Receipt (chỉ hiển thị cho tin nhắn của mình) -->
+                    <p
+                      v-if="shouldShowReadReceipt(message)"
+                      :class="[
+                        'text-xs mt-1 flex items-center gap-1',
+                        isMyMessage(message) ? 'text-primary-200' : 'text-slate-400'
+                      ]"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>{{ formatReadTime(message.read_at) }}</span>
                     </p>
                   </div>
 

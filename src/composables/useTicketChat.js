@@ -32,9 +32,16 @@ export function useTicketChat(ticketId) {
     channel.value = echo.private(`tickets.${ticketId}`)
       .listen('.new.message', (e) => {
         // Don't add if message already exists (from our own send)
+        // OR if message was sent by current user (toOthers() might not work with Reverb)
         const exists = messages.value.some(m => m.id === e.message.id)
-        if (!exists) {
+        const isMyMessage = e.message.user?.id === authStore.user?.id
+
+        if (!exists && !isMyMessage) {
           messages.value.push(e.message)
+
+          // Auto mark as read when receiving new message (while user is viewing the chat)
+          // This enables realtime "seen" status without needing to reopen the ticket
+          markAsRead(e.message.id)
         }
       })
       .listen('.user.typing', (e) => {
@@ -51,6 +58,15 @@ export function useTicketChat(ticketId) {
           } else {
             typingUsers.value = typingUsers.value.filter(id => id !== e.user.id)
           }
+        }
+      })
+      .listen('.message.read', (e) => {
+        // Update message read status
+        const messageIndex = messages.value.findIndex(m => m.id === e.message_id)
+        if (messageIndex !== -1 && !messages.value[messageIndex].read_at) {
+          messages.value[messageIndex].read_at = e.read_at
+          // Force trigger reactivity
+          messages.value = [...messages.value]
         }
       })
 
@@ -70,6 +86,46 @@ export function useTicketChat(ticketId) {
     }
   }
 
+  // Mark messages as read
+  const markAsRead = async (messageId = null) => {
+    if (authStore.user) {
+      try {
+        // Optimistic update: mark local messages as read first
+        const now = new Date().toISOString()
+        let hasChanges = false
+
+        if (messageId) {
+          // Mark specific message
+          const msg = messages.value.find(m => m.id === messageId)
+          if (msg && msg.user_id !== authStore.user?.id && !msg.read_at) {
+            msg.read_at = now
+            hasChanges = true
+          }
+        } else {
+          // Mark all unread messages (not sent by current user)
+          messages.value.forEach(msg => {
+            if (msg.user_id !== authStore.user?.id && !msg.read_at) {
+              msg.read_at = now
+              hasChanges = true
+            }
+          })
+        }
+
+        // Force trigger reactivity by creating new array reference
+        if (hasChanges) {
+          messages.value = [...messages.value]
+        }
+
+        // Then call API to persist and notify others
+        await api.post(`/tickets/${ticketId}/messages/read`, {
+          message_id: messageId
+        })
+      } catch (error) {
+        console.error('Error marking messages as read:', error)
+      }
+    }
+  }
+
   // Cleanup
   const unsubscribe = () => {
     if (channel.value) {
@@ -84,6 +140,14 @@ export function useTicketChat(ticketId) {
     messages.value.push(message)
   }
 
+  // Update message read status locally
+  const updateMessageReadStatus = (messageId, readAt) => {
+    const messageIndex = messages.value.findIndex(m => m.id === messageId)
+    if (messageIndex !== -1) {
+      messages.value[messageIndex].read_at = readAt
+    }
+  }
+
   return {
     messages,
     loading,
@@ -93,6 +157,8 @@ export function useTicketChat(ticketId) {
     subscribe,
     unsubscribe,
     sendTyping,
-    addMessage
+    markAsRead,
+    addMessage,
+    updateMessageReadStatus
   }
 }
