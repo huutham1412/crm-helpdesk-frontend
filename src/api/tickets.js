@@ -38,7 +38,9 @@ export const categoryService = {
 
 // Dashboard API
 export const dashboardService = {
-  statistics: () => api.get('/dashboard/statistics'),
+  statistics: (days = 30) => api.get('/dashboard/statistics', { params: { days } }),
+  analytics: (days = 30) => api.get('/dashboard/analytics', { params: { days } }),
+  charts: (type = 'trend', days = 30) => api.get('/dashboard/charts', { params: { type, days } }),
   recentActivity: () => api.get('/dashboard/activity'),
 }
 
