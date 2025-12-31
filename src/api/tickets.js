@@ -62,3 +62,11 @@ export const userService = {
   cskhList: () => api.get('/users/cskh-list'),
   statistics: () => api.get('/users/statistics'),
 }
+
+// Ratings API
+export const ratingService = {
+  show: (ticketId) => api.get(`/tickets/${ticketId}/rating`),
+  create: (ticketId, data) => api.post(`/tickets/${ticketId}/rating`, data),
+  cskhStats: (days = 30) => api.get('/ratings/cskh-stats', { params: { days } }),
+  myStats: (days = 30) => api.get('/ratings/my-stats', { params: { days } }),
+}

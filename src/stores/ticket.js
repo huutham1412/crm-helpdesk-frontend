@@ -135,6 +135,10 @@ export const useTicketStore = defineStore('ticket', () => {
       const response = await ticketService.sendMessage(ticketId, messageData)
       // Thêm tin nhắn mới vào danh sách
       messages.value.push(response.data.data.message)
+      // Cập nhật ticket nếu có (auto-assign)
+      if (response.data.data.ticket) {
+        currentTicket.value = response.data.data.ticket
+      }
       return { success: true, message: response.data.data.message }
     } catch (error) {
       return { success: false, error: error.response?.data?.message }

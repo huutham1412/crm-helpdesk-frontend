@@ -5,10 +5,13 @@ import { useTicketStore } from '@/stores/ticket'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
 import { useTicketChat } from '@/composables/useTicketChat'
+import { useRating } from '@/composables/useRating'
 import { attachmentService } from '@/api/attachments'
+import { userService } from '@/api/tickets'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import AttachmentUpload from '@/components/AttachmentUpload.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
+import RatingForm from '@/components/RatingForm.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -48,6 +51,9 @@ const {
   addMessage: addRealtimeMessage
 } = useTicketChat(route.params.id)
 
+// Rating composable
+const { rating: ticketRating, fetchRating } = useRating(route.params.id)
+
 // Watch realtime messages and sync with local messages
 watch(realtimeMessages, (newMessages) => {
   messages.value = Array.isArray(newMessages) ? newMessages : []
@@ -66,8 +72,27 @@ const canAssign = computed(() => isStaff.value)
 // Computed property: Chỉ staff mới được gửi internal message
 const canSendInternal = computed(() => isStaff.value)
 
+// Computed property: Show rating form for closed tickets that haven't been rated yet (only for regular users)
+const showRatingForm = computed(() => {
+  return !isStaff.value && ticket.value?.status === 'closed' && !ticketRating.value
+})
+
+// Handle rating submitted
+const handleRatingSubmitted = (newRating) => {
+  ticketRating.value = newRating
+}
+
 // Reactive state: Status dropdown hiển/ẩn
 const showStatusDropdown = ref(false)
+
+// Reactive state: Assign dropdown hiển/ẩn
+const showAssignDropdown = ref(false)
+
+// Reactive state: Danh sách CSKH để assign
+const cskhList = ref([])
+
+// Reactive state: Đang load CSKH list
+const loadingCskh = ref(false)
 
 // Hàm kiểm tra tin nhắn có phải của user hiện tại không
 const isMyMessage = (message) => {
@@ -107,8 +132,28 @@ const fetchData = async () => {
     return
   }
 
-  // Subscribe to realtime updates
-  subscribe()
+  // Fetch rating (if ticket is closed)
+  if (ticket.value?.status === 'closed') {
+    await fetchRating()
+  }
+
+  // Subscribe to realtime updates with callback for ticket changes
+  subscribe((updatedTicket) => {
+    if (updatedTicket) {
+      const oldStatus = ticket.value?.status
+      ticket.value = updatedTicket
+
+      // If status changed to closed, fetch rating data
+      if (oldStatus !== 'closed' && updatedTicket.status === 'closed') {
+        fetchRating()
+      }
+
+      // Show toast notification for status changes
+      if (oldStatus !== updatedTicket.status) {
+        toast.success(`Trạng thái ticket đã thay đổi thành ${statusLabels[updatedTicket.status] || updatedTicket.status}`)
+      }
+    }
+  })
 
   // Mark all unread messages as read
   markAsRead()
@@ -228,6 +273,61 @@ const updateStatus = async (status) => {
     nextTick(() => scrollToBottom())
   } else {
     toast.error(result.error || 'Không thể cập nhật trạng thái')
+  }
+}
+
+// Hàm fetch danh sách CSKH
+const fetchCskhList = async () => {
+  loadingCskh.value = true
+  try {
+    const response = await userService.cskhList()
+    cskhList.value = response.data.data
+  } catch (error) {
+    console.error('Failed to fetch CSKH list:', error)
+  } finally {
+    loadingCskh.value = false
+  }
+}
+
+// Hàm gán ticket cho CSKH
+const assignTicket = async (userId) => {
+  const ticketId = route.params.id
+  const result = await ticketStore.assignTicket(ticketId, userId)
+  if (result.success) {
+    ticket.value = ticketStore.currentTicket
+    showAssignDropdown.value = false
+    const assignedUser = cskhList.value.find(u => u.id === userId)
+    toast.success(`Đã gán ticket cho ${assignedUser?.name || 'CSKH'}`)
+    // Thêm tin nhắn system để log
+    messages.value.push({
+      id: Date.now(),
+      message: `Ticket đã được gán cho ${assignedUser?.name || 'CSKH'}`,
+      message_type: 'system',
+      created_at: new Date().toISOString(),
+    })
+    nextTick(() => scrollToBottom())
+  } else {
+    toast.error(result.error || 'Không thể gán ticket')
+  }
+}
+
+// Hàm bỏ gán ticket
+const unassignTicket = async () => {
+  const ticketId = route.params.id
+  const result = await ticketStore.assignTicket(ticketId, null)
+  if (result.success) {
+    ticket.value = ticketStore.currentTicket
+    showAssignDropdown.value = false
+    toast.success('Đã bỏ gán ticket')
+    messages.value.push({
+      id: Date.now(),
+      message: 'Ticket đã được bỏ gán',
+      message_type: 'system',
+      created_at: new Date().toISOString(),
+    })
+    nextTick(() => scrollToBottom())
+  } else {
+    toast.error(result.error || 'Không thể bỏ gán ticket')
   }
 }
 
@@ -353,6 +453,10 @@ const previewInitialIndex = ref(0)
 // Lifecycle hook: Fetch dữ liệu khi component được mount
 onMounted(() => {
   fetchData()
+  // Fetch CSKH list cho staff
+  if (isStaff.value) {
+    fetchCskhList()
+  }
 })
 
 // Cleanup: Unsubscribe from realtime updates when component unmounts
@@ -376,7 +480,7 @@ onUnmounted(() => {
       <!-- Ticket Content -->
       <div v-else-if="ticket" class="max-w-6xl mx-auto space-y-6">
         <!-- Ticket Header Card -->
-        <div class="card shadow-soft !rounded-3xl overflow-hidden animate-fade-in">
+        <div class="card shadow-soft !rounded-3xl animate-fade-in relative z-10">
           <!-- Top Bar with Back & Status -->
           <div class="bg-gradient-to-r from-slate-50 to-white px-6 py-4 border-b border-slate-100">
             <div class="flex items-center justify-between">
@@ -435,16 +539,16 @@ onUnmounted(() => {
                   leave-from-class="opacity-100 scale-100"
                   leave-to-class="opacity-0 scale-95"
                 >
-                  <div v-if="showStatusDropdown" class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50">
+                  <div v-if="showStatusDropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-[100]">
                     <button
                       v-for="option in statusOptions"
                       :key="option.value"
                       @click="updateStatus(option.value); showStatusDropdown = false"
-                      class="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+                      class="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-50 transition-colors text-left"
                       :class="ticket.status === option.value ? 'bg-primary-50 text-primary-700' : 'text-slate-700'"
                     >
-                      <div :class="['w-8 h-8 rounded-lg flex items-center justify-center text-white', option.color]">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div :class="['w-7 h-7 rounded-lg flex items-center justify-center text-white', option.color]">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="option.icon" />
                         </svg>
                       </div>
@@ -484,16 +588,86 @@ onUnmounted(() => {
               </div>
 
               <!-- Assigned To -->
-              <div class="flex items-center gap-3 p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200">
-                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/30">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <div class="relative">
+                <div
+                  v-if="canAssign"
+                  @click="showAssignDropdown = !showAssignDropdown"
+                  class="flex items-center gap-3 p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200 cursor-pointer hover:shadow-md transition-shadow"
+                >
+                  <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs text-emerald-600 font-medium">Người xử lý</p>
+                    <p class="text-sm font-semibold text-slate-900 truncate">{{ ticket.assigned_to?.name || 'Chưa gán' }}</p>
+                  </div>
+                  <svg class="w-4 h-4 text-emerald-500" :class="{ 'rotate-180': showAssignDropdown }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
-                <div class="min-w-0 flex-1">
-                  <p class="text-xs text-emerald-600 font-medium">Người xử lý</p>
-                  <p class="text-sm font-semibold text-slate-900 truncate">{{ ticket.assigned_to?.name || 'Chưa gán' }}</p>
+                <div
+                  v-else
+                  class="flex items-center gap-3 p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200"
+                >
+                  <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs text-emerald-600 font-medium">Người xử lý</p>
+                    <p class="text-sm font-semibold text-slate-900 truncate">{{ ticket.assigned_to?.name || 'Chưa gán' }}</p>
+                  </div>
                 </div>
+
+                <!-- Assign Dropdown -->
+                <Transition
+                  enter-active-class="transition ease-out duration-200"
+                  enter-from-class="opacity-0 scale-95"
+                  enter-to-class="opacity-100 scale-100"
+                  leave-active-class="transition ease-in duration-150"
+                  leave-from-class="opacity-100 scale-100"
+                  leave-to-class="opacity-0 scale-95"
+                >
+                  <div v-if="showAssignDropdown && canAssign" class="absolute left-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                    <div v-if="loadingCskh" class="px-4 py-3 text-sm text-slate-500 text-center">
+                      Đang tải...
+                    </div>
+                    <div v-else-if="cskhList.length === 0" class="px-4 py-3 text-sm text-slate-500 text-center">
+                      Không có CSKH
+                    </div>
+                    <template v-else>
+                      <button
+                        v-for="cskh in cskhList"
+                        :key="cskh.id"
+                        @click.stop="assignTicket(cskh.id)"
+                        class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+                        :class="ticket.assigned_to?.id === cskh.id ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700'"
+                      >
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white text-xs font-bold">
+                          {{ getUserInitials(cskh.name) }}
+                        </div>
+                        <span class="font-medium text-sm">{{ cskh.name }}</span>
+                        <svg v-if="ticket.assigned_to?.id === cskh.id" class="w-4 h-4 ml-auto text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                      <div class="border-t border-slate-100 my-1"></div>
+                      <button
+                        v-if="ticket.assigned_to"
+                        @click.stop="unassignTicket()"
+                        class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-red-50 transition-colors text-left text-red-600"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span class="font-medium text-sm">Bỏ gán</span>
+                      </button>
+                    </template>
+                  </div>
+                </Transition>
               </div>
 
               <!-- Category -->
@@ -724,7 +898,8 @@ onUnmounted(() => {
           </div>
 
           <!-- Message Input -->
-          <div class="p-5 bg-white border-t border-slate-100">
+          <!-- Disabled for closed tickets -->
+          <div v-if="ticket.status !== 'closed'" class="p-5 bg-white border-t border-slate-100">
             <!-- Pending Attachments Preview -->
             <AttachmentUpload
               v-if="ticket"
@@ -788,6 +963,38 @@ onUnmounted(() => {
                 </svg>
               </button>
             </form>
+          </div>
+
+          <!-- Closed Ticket Notice -->
+          <div v-else class="p-5 bg-gradient-to-r from-slate-50 to-slate-100 border-t border-slate-200">
+            <div class="flex items-center justify-center gap-3 text-slate-600">
+              <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728a9 9 0 01-2.828 2.828m-14.857 2.828a9 9 0 010-2.828-2.828m14.857-12.728a9 9 0 012.828-2.828" />
+              </svg>
+              <span class="font-medium">Ticket đã đóng, không thể gửi tin nhắn thêm.</span>
+            </div>
+          </div>
+
+          <!-- Rating Form (for closed tickets, regular users only) - shown inside chat card for visibility -->
+          <div v-if="showRatingForm" class="p-5 bg-white border-t border-slate-100">
+            <RatingForm
+              v-if="ticket"
+              :ticket-id="ticket.id"
+              @rated="handleRatingSubmitted"
+            />
+          </div>
+        </div>
+
+        <!-- Rating Form for already rated tickets (shown separately) -->
+        <div v-if="!isStaff && ticket.status === 'closed' && ticketRating" class="card shadow-soft !rounded-3xl overflow-hidden animate-slide-up" style="animation-delay: 0.2s">
+          <div class="p-6 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full mb-4">
+              <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-slate-900 mb-2">Cảm ơn bạn đã đánh giá!</h3>
+            <p class="text-slate-600">Chúng tôi rất trân trọng phản hồi của bạn.</p>
           </div>
         </div>
       </div>

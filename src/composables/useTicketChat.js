@@ -26,7 +26,7 @@ export function useTicketChat(ticketId) {
   }
 
   // Listen for new messages
-  const subscribe = () => {
+  const subscribe = (onTicketUpdate = null) => {
     if (subscribed.value) return
 
     channel.value = echo.private(`tickets.${ticketId}`)
@@ -67,6 +67,12 @@ export function useTicketChat(ticketId) {
           messages.value[messageIndex].read_at = e.read_at
           // Force trigger reactivity
           messages.value = [...messages.value]
+        }
+      })
+      .listen('.ticket.updated', (e) => {
+        // Handle ticket status changes, assign changes, etc.
+        if (onTicketUpdate && e.ticket) {
+          onTicketUpdate(e.ticket)
         }
       })
 

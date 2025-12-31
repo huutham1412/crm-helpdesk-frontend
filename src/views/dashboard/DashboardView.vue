@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { dashboardService } from '@/api/tickets'
+import { dashboardService, ratingService } from '@/api/tickets'
 import { useToast } from 'vue-toastification'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 
@@ -35,6 +35,15 @@ const chartData = ref({
   priority: {},
   category: [],
 })
+
+// Rating statistics (CSKH only)
+const ratingStats = ref({
+  average_rating: null,
+  total_ratings: 0,
+  distribution: { '5_star': 0, '4_star': 0, '3_star': 0, '2_star': 0, '1_star': 0 },
+  cskh_staff: [],
+})
+const ratingLoading = ref(false)
 
 // Reactive state: Danh sách tickets gần đây
 const recentTickets = ref([])
@@ -117,6 +126,22 @@ const onPeriodChange = async (period) => {
   await fetchDashboardData()
   await fetchAnalytics()
   await fetchAllCharts()
+  await fetchRatingStats()
+}
+
+// Fetch rating statistics (CSKH only)
+const fetchRatingStats = async () => {
+  if (!isStaff.value) return
+
+  ratingLoading.value = true
+  try {
+    const response = await ratingService.cskhStats(selectedPeriod.value)
+    ratingStats.value = response.data.data
+  } catch (error) {
+    console.error('Failed to fetch rating stats:', error)
+  } finally {
+    ratingLoading.value = false
+  }
 }
 
 // Lifecycle hook
@@ -125,6 +150,7 @@ onMounted(async () => {
   if (isStaff.value) {
     await fetchAnalytics()
     await fetchAllCharts()
+    await fetchRatingStats()
   }
 })
 
@@ -579,6 +605,120 @@ const getTrendClass = (trend) => {
               <div v-else class="text-center py-8 text-slate-500">
                 Chưa có dữ liệu
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rating Statistics (CSKH Only) -->
+        <div class="card shadow-soft">
+          <div class="card-header">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg shadow-amber-500/30">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h2 class="text-lg font-semibold text-slate-900">Đánh giá từ khách hàng</h2>
+                <p class="text-sm text-slate-500">Thống kê đánh giá {{ selectedPeriod }} ngày qua</p>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div v-if="ratingLoading" class="text-center py-8 text-slate-500">
+              Đang tải dữ liệu...
+            </div>
+            <div v-else-if="ratingStats.total_ratings > 0" class="space-y-6">
+              <!-- Overall Rating Summary -->
+              <div class="flex items-center justify-between p-5 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200">
+                <div class="flex items-center gap-4">
+                  <div class="text-5xl font-bold text-amber-600">
+                    {{ ratingStats.average_rating?.toFixed(1) || '-' }}
+                  </div>
+                  <div>
+                    <p class="text-sm text-slate-600">Đánh giá trung bình</p>
+                    <div class="flex items-center gap-1 mt-1">
+                      <svg
+                        v-for="i in 5"
+                        :key="i"
+                        class="w-5 h-5"
+                        :class="i <= Math.round(ratingStats.average_rating || 0) ? 'text-amber-400' : 'text-gray-300'"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                      </svg>
+                      <span class="text-sm text-slate-600 ml-2">{{ ratingStats.total_ratings }} đánh giá</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <p class="text-sm text-slate-500">Tổng số</p>
+                  <p class="text-2xl font-bold text-slate-900">{{ ratingStats.total_ratings }}</p>
+                </div>
+              </div>
+
+              <!-- Rating Distribution & CSKH Staff Table -->
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Rating Distribution -->
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-700 mb-4">Phân bố đánh giá</h3>
+                  <div class="space-y-3">
+                    <div v-for="star in 5" :key="star" class="flex items-center gap-3">
+                      <span class="text-sm text-slate-600 w-16">{{ star }} sao</span>
+                      <div class="flex-1 bg-slate-100 rounded-full h-3">
+                        <div
+                          class="h-3 rounded-full bg-gradient-to-r from-amber-400 to-amber-500"
+                          :style="{ width: (ratingStats.distribution[star + '_star'] || 0) / (ratingStats.total_ratings || 1) * 100 + '%' }"
+                        ></div>
+                      </div>
+                      <span class="text-sm font-medium text-slate-700 w-12 text-right">
+                        {{ ratingStats.distribution[star + '_star'] || 0 }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CSKH Staff Leaderboard -->
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-700 mb-4">Bảng xếp hạng CSKH</h3>
+                  <div class="space-y-2">
+                    <div
+                      v-for="(cskh, index) in ratingStats.cskh_staff.slice(0, 5)"
+                      :key="cskh.id"
+                      class="flex items-center gap-3 p-3 rounded-xl"
+                      :class="index === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'"
+                    >
+                      <span
+                        class="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold"
+                        :class="index === 0 ? 'bg-amber-400 text-white' : index === 1 ? 'bg-slate-300 text-white' : index === 2 ? 'bg-orange-400 text-white' : 'bg-slate-200 text-slate-600'"
+                      >
+                        {{ index + 1 }}
+                      </span>
+                      <div class="flex-1">
+                        <p class="font-medium text-slate-900">{{ cskh.name }}</p>
+                        <div class="flex items-center gap-2 text-sm text-slate-500">
+                          <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                          </svg>
+                          <span>{{ cskh.avg_rating?.toFixed(1) || '-' }}</span>
+                          <span class="text-slate-400">•</span>
+                          <span>{{ cskh.total_ratings }} đánh giá</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-center py-12">
+              <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                </svg>
+              </div>
+              <h3 class="text-lg font-semibold text-slate-900 mb-1">Chưa có đánh giá nào</h3>
+              <p class="text-slate-500">Khi khách hàng đánh giá, thống kê sẽ hiển thị ở đây</p>
             </div>
           </div>
         </div>
