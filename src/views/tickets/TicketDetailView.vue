@@ -12,6 +12,7 @@ import DashboardLayout from '@/components/DashboardLayout.vue'
 import AttachmentUpload from '@/components/AttachmentUpload.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import RatingForm from '@/components/RatingForm.vue'
+import CannedResponseSelector from '@/components/CannedResponseSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -441,6 +442,32 @@ const hoveredMessageId = ref(null)
 
 // Reactive state: Internal message option
 const isInternalMessage = ref(false)
+
+// Handle canned response template selection
+const handleTemplateSelect = (content) => {
+  // Insert content at cursor position or append to end
+  const textarea = document.querySelector('textarea[v-model]')
+  if (textarea) {
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const text = newMessage.value
+    const before = text.substring(0, start)
+    const after = text.substring(end)
+
+    // Add newline if there's existing content
+    const separator = before && !before.endsWith('\n') ? '\n' : ''
+    newMessage.value = before + separator + content + after
+
+    // Set cursor after inserted content
+    nextTick(() => {
+      const newPosition = before.length + separator.length + content.length
+      textarea.setSelectionRange(newPosition, newPosition)
+      textarea.focus()
+    })
+  } else {
+    newMessage.value = content
+  }
+}
 
 // Reactive state: Pending attachments (uploaded but not yet sent with message)
 const pendingAttachments = ref([])
@@ -921,6 +948,15 @@ onUnmounted(() => {
                 </svg>
                 <span>Tin nhắn nội bộ <span class="text-slate-400">(chỉ CSKH thấy)</span></span>
               </label>
+            </div>
+
+            <!-- Canned Response Selector (CSKH/Admin only) -->
+            <div v-if="canSendInternal" class="mb-3 flex items-center gap-3 px-2">
+              <CannedResponseSelector
+                :ticket-id="ticket?.id"
+                :ticket-data="{ ...ticket, cskh_name: authStore.user?.name }"
+                @select="handleTemplateSelect"
+              />
             </div>
 
             <form @submit.prevent="sendMessage" class="flex items-end gap-3">

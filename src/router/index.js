@@ -10,6 +10,7 @@ const CreateTicketView = () => import('@/views/tickets/CreateTicketView.vue')
 const CategoryListView = () => import('@/views/categories/CategoryListView.vue')
 const UsersView = () => import('@/views/admin/UsersView.vue')
 const RolesView = () => import('@/views/admin/RolesView.vue')
+const CannedResponsesView = () => import('@/views/CannedResponses.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -60,6 +61,12 @@ const router = createRouter({
       component: CategoryListView,
       meta: { requiresAuth: true, requiresAdmin: true, title: 'Categories', description: 'Quản lý danh mục' },
     },
+    {
+      path: '/canned-responses',
+      name: 'canned-responses',
+      component: CannedResponsesView,
+      meta: { requiresAuth: true, requiresStaff: true, title: 'Template Trả Lời', description: 'Quản lý template trả lời nhanh' },
+    },
     // Admin routes
     {
       path: '/admin/users',
@@ -96,6 +103,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.meta.requiresAdmin && isAuthenticated && !authStore.isAdmin) {
+    next('/dashboard')
+    return
+  }
+
+  if (to.meta.requiresStaff && isAuthenticated && !authStore.isCsKH) {
     next('/dashboard')
     return
   }
