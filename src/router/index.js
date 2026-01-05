@@ -10,6 +10,7 @@ const CreateTicketView = () => import('@/views/tickets/CreateTicketView.vue')
 const CategoryListView = () => import('@/views/categories/CategoryListView.vue')
 const UsersView = () => import('@/views/admin/UsersView.vue')
 const RolesView = () => import('@/views/admin/RolesView.vue')
+const ActivityLogsView = () => import('@/views/admin/ActivityLogsView.vue')
 const CannedResponsesView = () => import('@/views/CannedResponses.vue')
 
 const router = createRouter({
@@ -79,6 +80,12 @@ const router = createRouter({
       name: 'admin-roles',
       component: RolesView,
       meta: { requiresAuth: true, requiresAdmin: true, title: 'Quản lý vai trò' },
+    },
+    {
+      path: '/admin/activity-logs',
+      name: 'admin-activity-logs',
+      component: ActivityLogsView,
+      meta: { requiresAuth: true, requiresAdmin: true, title: 'Nhật ký hoạt động' },
     },
     {
       path: '/:pathMatch(.*)*',

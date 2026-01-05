@@ -44,4 +44,31 @@ export const adminService = {
 
   // Get roles for select dropdown
   getRolesList: () => axios.get('/roles/list'),
+
+  // ==================== ACTIVITY LOGS ====================
+  // Get activity logs with filters
+  getActivityLogs: (params = {}) => axios.get('/activity-logs', { params }),
+
+  // Get single activity log with details
+  getActivityLog: (id) => axios.get(`/activity-logs/${id}`),
+
+  // Get subject history
+  getSubjectHistory: (subjectType, subjectId) => axios.get('/activity-logs/subject/history', {
+    params: { subject_type: subjectType, subject_id: subjectId }
+  }),
+
+  // Get activity log statistics
+  getActivityLogStats: (params = {}) => axios.get('/activity-logs/statistics', { params }),
+
+  // Export activity logs
+  exportActivityLogs: (params = {}) => axios.get('/activity-logs/export', {
+    params,
+    responseType: 'blob'
+  }),
+
+  // Clean old activity logs
+  cleanActivityLogs: () => axios.post('/activity-logs/clean'),
+
+  // Get filter options
+  getActivityLogOptions: () => axios.get('/activity-logs/options'),
 }
